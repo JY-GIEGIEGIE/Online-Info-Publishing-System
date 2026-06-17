@@ -30,8 +30,10 @@ public class StockServiceImpl implements StockService {
 
     @Override
     public SyncStockInfo getByCode(String stockCode) {
-        // TODO: 根据股票代码查询
-        throw new UnsupportedOperationException("TODO");
+        // DONE: 根据股票代码查询
+        LambdaQueryWrapper<SyncStockInfo> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SyncStockInfo::getStockCode, stockCode);
+        return stockInfoMapper.selectOne(wrapper);
     }
 
     @Override
