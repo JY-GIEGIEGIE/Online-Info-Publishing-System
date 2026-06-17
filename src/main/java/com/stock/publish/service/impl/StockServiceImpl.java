@@ -1,5 +1,6 @@
 package com.stock.publish.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.stock.publish.entity.SyncStockInfo;
 import com.stock.publish.mapper.SyncStockInfoMapper;
 import com.stock.publish.service.StockService;
@@ -18,8 +19,13 @@ public class StockServiceImpl implements StockService {
 
     @Override
     public List<SyncStockInfo> search(String keyword) {
-        // TODO: 模糊搜索：stock_code LIKE keyword OR pinyin_abbr LIKE keyword，LIMIT 10
-        throw new UnsupportedOperationException("TODO");
+        // DONE: 模糊搜索：stock_code LIKE keyword OR pinyin_abbr LIKE keyword，LIMIT 10
+        LambdaQueryWrapper<SyncStockInfo> wrapper = new LambdaQueryWrapper<>();
+        wrapper.like(SyncStockInfo::getStockCode, keyword)
+                .or()
+                .like(SyncStockInfo::getPinyinAbbr, keyword)
+                .last("LIMIT 10");
+        return stockInfoMapper.selectList(wrapper);
     }
 
     @Override
