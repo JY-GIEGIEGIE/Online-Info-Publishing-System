@@ -14,12 +14,15 @@ import com.stock.publish.service.MarketService;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.concurrent.TimeUnit;
 
+@EnableScheduling
 @Service
 public class MarketServiceImpl implements MarketService {
 
@@ -50,10 +53,6 @@ public class MarketServiceImpl implements MarketService {
         if (role == UserContext.UserRole.GUEST) {
             quote.setTopBuyer(null);
             quote.setTopSeller(null);
-            quote.setBidPrice(null);
-            quote.setAskPrice(null);
-            quote.setBidVolume(null);
-            quote.setAskVolume(null);
         }
         return quote;
     }
@@ -99,7 +98,6 @@ public class MarketServiceImpl implements MarketService {
         } catch (UnsupportedOperationException e) {
             // B3 尚未实现，主力数据暂缺
         }
-        // bidPrice/askPrice/bidVolume/askVolume 来自实时撮合，由 refreshQuotes 写入 Redis，此处无数据源
         return dto;
     }
 
@@ -153,6 +151,7 @@ public class MarketServiceImpl implements MarketService {
         }
     }
 
+    @Scheduled(fixedRate = 5000)
     @Override
     public void refreshQuotes() {
         // TODO: @Scheduled(fixedRate=5000) 每5秒执行
@@ -161,7 +160,12 @@ public class MarketServiceImpl implements MarketService {
         // TODO: 3. 写入 Redis "quote:{stockCode}" TTL 5s
         // TODO: 4. 调用 TopTraderEngine.accumulate() 累加主力数据
         // TODO: 5. 将 tick 推入 Redis List "tick:{stockCode}" 供 K线聚合
-        throw new UnsupportedOperationException("TODO");
+        try {
+            // 模拟调用接口获得5秒内新增的成交订单数据：[{股票代码1-时间戳-买方名称-卖方名称-成交价-成交股数},{股票代码1-时间戳-买方名称-卖方名称-成交价-成交股数}...]
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
     }
 
     public void aggregate5mKline() {

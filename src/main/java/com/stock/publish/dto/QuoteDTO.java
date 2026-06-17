@@ -16,8 +16,4 @@ public class QuoteDTO {
     // STANDARD+ fields
     private TopTraderDTO topBuyer;
     private TopTraderDTO topSeller;
-    private BigDecimal bidPrice;
-    private BigDecimal askPrice;
-    private Long bidVolume;
-    private Long askVolume;
 }
