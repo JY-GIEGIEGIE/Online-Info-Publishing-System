@@ -11,6 +11,7 @@ import com.stock.publish.interceptor.UserContext;
 import com.stock.publish.mapper.Kline5mDataMapper;
 import com.stock.publish.mapper.SyncStockInfoMapper;
 import com.stock.publish.service.MarketService;
+import net.sf.jsqlparser.expression.DateTimeLiteralExpression;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @EnableScheduling
@@ -53,6 +55,10 @@ public class MarketServiceImpl implements MarketService {
         if (role == UserContext.UserRole.GUEST) {
             quote.setTopBuyer(null);
             quote.setTopSeller(null);
+            quote.setBidPrice(null);
+            quote.setAskPrice(null);
+            quote.setBidVolume(null);
+            quote.setAskVolume(null);
         }
         return quote;
     }
@@ -151,6 +157,15 @@ public class MarketServiceImpl implements MarketService {
         }
     }
 
+     private record TransactionRecord(
+            String stockCode,
+            DateTimeLiteralExpression.DateTime timestamp,
+            String buyerAccount,
+            String sellerAccount,
+            BigDecimal price,
+            long quantity
+    ) {}
+
     @Scheduled(fixedRate = 5000)
     @Override
     public void refreshQuotes() {
@@ -162,6 +177,13 @@ public class MarketServiceImpl implements MarketService {
         // TODO: 5. 将 tick 推入 Redis List "tick:{stockCode}" 供 K线聚合
         try {
             // 模拟调用接口获得5秒内新增的成交订单数据：[{股票代码1-时间戳-买方名称-卖方名称-成交价-成交股数},{股票代码1-时间戳-买方名称-卖方名称-成交价-成交股数}...]
+            List<TransactionRecord> records = mockTransactions();
+            // 按股票代码分组
+            for (TransactionRecord record : records) {
+
+            }
+
+
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
