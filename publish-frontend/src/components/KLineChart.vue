@@ -16,7 +16,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted, defineProps, defineEmits, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { useUserStore } from '@/stores/user'
 
@@ -66,7 +66,7 @@ function calcMA(data, day) {
   const res = []
   for (let i = 0; i < data.length; i++) {
     if (i < day - 1) {
-      res.push('-')
+      res.push(null)
       continue
     }
     let sum = 0
@@ -113,7 +113,7 @@ function renderChart() {
   if (!chartInstance || !props.klineData.length) return
   const data = props.klineData
 
-  const xData = data.map(item => item.date)
+  const xData = data.map(item => item.time)
   const kData = data.map(item => [item.open, item.close, item.low, item.high])
   const ma5 = calcMA(data, 5)
   const ma10 = calcMA(data, 10)

@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref, defineProps, defineEmits } from 'vue'
+import { ref } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { upgradeToVip } from '@/api/market'
 
@@ -109,12 +109,9 @@ const handleUpgrade = async () => {
 
   try {
     // 调用升级VIP接口
-    await upgradeToVip({
-      phone: phone.value,
-      code: code.value
-    })
+    await upgradeToVip()
     // 更新全局用户状态为VIP
-    userStore.setVip(true)
+    userStore.setRole('PREMIUM_VIP')
     alert('升级VIP成功!已解锁全部高级K线指标')
     // 关闭所有弹窗，通知父组件关闭弹窗
     emit('close')
