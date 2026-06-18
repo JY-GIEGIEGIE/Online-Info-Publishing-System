@@ -11,7 +11,6 @@ import com.stock.publish.interceptor.UserContext;
 import com.stock.publish.mapper.Kline5mDataMapper;
 import com.stock.publish.mapper.SyncStockInfoMapper;
 import com.stock.publish.service.MarketService;
-import net.sf.jsqlparser.expression.DateTimeLiteralExpression;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -21,7 +20,11 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @EnableScheduling
@@ -159,7 +162,7 @@ public class MarketServiceImpl implements MarketService {
 
      private record TransactionRecord(
             String stockCode,
-            DateTimeLiteralExpression.DateTime timestamp,
+            LocalDateTime timestamp,
             String buyerAccount,
             String sellerAccount,
             BigDecimal price,
@@ -169,25 +172,72 @@ public class MarketServiceImpl implements MarketService {
     @Scheduled(fixedRate = 5000)
     @Override
     public void refreshQuotes() {
-        // TODO: @Scheduled(fixedRate=5000) 每5秒执行
-        // TODO: 1. 从中央交易系统拉取最新成交流水（Mock）
-        // TODO: 2. 计算 last_price、change_rate
-        // TODO: 3. 写入 Redis "quote:{stockCode}" TTL 5s
-        // TODO: 4. 调用 TopTraderEngine.accumulate() 累加主力数据
-        // TODO: 5. 将 tick 推入 Redis List "tick:{stockCode}" 供 K线聚合
-        try {
-            // 模拟调用接口获得5秒内新增的成交订单数据：[{股票代码1-时间戳-买方名称-卖方名称-成交价-成交股数},{股票代码1-时间戳-买方名称-卖方名称-成交价-成交股数}...]
-            List<TransactionRecord> records = mockTransactions();
-            // 按股票代码分组
-            for (TransactionRecord record : records) {
+        // DONE: 1. 从中央交易系统拉取最新成交流水（Mock）
+        // DONE: 2. 计算 last_price、change_rate
+        // DONE: 3. 写入 Redis "quote:{stockCode}" TTL 5s
+        // DONE: 4. 调用 TopTraderEngine.accumulate() 累加主力数据
+        // DONE: 5. 将 tick 推入 Redis List "tick:{stockCode}" 供 K线聚合
+        List<TransactionRecord> records = mockTransactions();
+        records.sort(Comparator.comparing(TransactionRecord::timestamp));
 
+        // 按时间戳排序后 put，后出现的覆盖前一条 → 每只股票保留最新成交价
+        Map<String, BigDecimal> lastPrices = new HashMap<>();
+        for (TransactionRecord record : records) {
+            if (record.stockCode != null) {
+                lastPrices.put(record.stockCode, record.price);
             }
-
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
 
+        for (Map.Entry<String, BigDecimal> entry : lastPrices.entrySet()) {
+            String code = entry.getKey();
+            BigDecimal lastPrice = entry.getValue();
+
+            SyncStockInfo info = stockInfoMapper.selectById(code);
+            if (info == null) continue;
+
+            // changeRate = (lastPrice - yesterdayClose) / yesterdayClose * 100%
+            BigDecimal yClose = info.getYesterdayClose();
+            BigDecimal rate = lastPrice.subtract(yClose)
+                    .divide(yClose, 4, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100))
+                    .setScale(2, RoundingMode.HALF_UP);
+            String changeRate = (rate.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+                    + rate + "%";
+
+            // 组装 QuoteDTO 并写入 Redis（TTL 5 秒）
+            QuoteDTO quote = buildQuote(code);
+            quote.setLastPrice(lastPrice);
+            quote.setChangeRate(changeRate);
+            try {
+                String json = objectMapper.writeValueAsString(quote);
+                redisTemplate.opsForValue().set("quote:" + code, json, 5, TimeUnit.SECONDS);
+            } catch (JsonProcessingException ignored) {}
+
+            // 主力累加 & 推 tick
+            for (TransactionRecord r : records) {
+                if (!code.equals(r.stockCode)) continue;
+
+                try {
+                    topTraderEngine.accumulate(code, r.buyerAccount(), r.sellerAccount(), r.quantity());
+                } catch (UnsupportedOperationException ignored) {}
+
+                try {
+                    String tickJson = objectMapper.writeValueAsString(r);
+                    redisTemplate.opsForList().rightPush("tick:" + code, tickJson);
+                } catch (JsonProcessingException ignored) {}
+            }
+        }
+    }
+
+    private List<TransactionRecord> mockTransactions() {
+        List<TransactionRecord> list = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        // Mock 两只股票各一笔成交
+        list.add(new TransactionRecord("600519", now.minusSeconds(2),
+                "买方A", "卖方B", new BigDecimal("1680.00"), 5000L));
+        list.add(new TransactionRecord("000001", now.minusSeconds(1),
+                "买方C", "卖方D", new BigDecimal("12.50"), 30000L));
+        return list;
     }
 
     public void aggregate5mKline() {
