@@ -14,6 +14,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -69,5 +71,28 @@ class StockServiceImplTest {
         List<SyncStockInfo> result = stockService.search("zzzz");
 
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testGetByCode() {
+        SyncStockInfo stock = new SyncStockInfo();
+        stock.setStockCode("600519");
+        stock.setStockName("贵州茅台");
+
+        when(stockInfoMapper.selectById("600519")).thenReturn(stock);
+
+        SyncStockInfo result = stockService.getByCode("600519");
+
+        assertNotNull(result);
+        assertEquals("600519", result.getStockCode());
+        assertEquals("贵州茅台", result.getStockName());
+    }
+
+    @Test
+    void testSyncFromCentralSystem() {
+        stockService.syncFromCentralSystem();
+
+        // 验证 insert 被调用 2 次（2 只 Mock 股票）
+        verify(stockInfoMapper, times(2)).insert(any(SyncStockInfo.class));
     }
 }
