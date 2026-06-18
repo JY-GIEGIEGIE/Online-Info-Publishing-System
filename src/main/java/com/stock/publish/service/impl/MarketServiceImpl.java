@@ -25,6 +25,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.TimeUnit;
 
 @EnableScheduling
@@ -37,6 +38,8 @@ public class MarketServiceImpl implements MarketService {
     private final Kline5mDataMapper kline5mDataMapper;
     private final TopTraderEngine topTraderEngine;
     private final ObjectMapper objectMapper;
+
+    private static final List<String> MOCK_STOCKS = List.of("600519", "000001");
 
     public MarketServiceImpl(StringRedisTemplate redisTemplate,
                              RedissonClient redissonClient,
@@ -240,11 +243,53 @@ public class MarketServiceImpl implements MarketService {
         return list;
     }
 
+    @Scheduled(initialDelay = 300000, fixedRate = 300000)
     public void aggregate5mKline() {
-        // TODO: @Scheduled(initialDelay=300000, fixedRate=300000) 每5分钟执行
-        // TODO: 1. 从 Redis "tick:{stockCode}" 取出过去5分钟的所有 tick
-        // TODO: 2. 聚合为 OHLCV
-        // TODO: 3. 写入 kline_5m_data 表
-        throw new UnsupportedOperationException("TODO");
+        // DONE: 1. 从 Redis "tick:{stockCode}" 取出过去5分钟的所有 tick
+        // DONE: 2. 聚合为 OHLCV
+        // DONE: 3. 写入 kline_5m_data 表
+        LocalDateTime periodStart = LocalDateTime.now()
+                .minusMinutes(5)
+                .truncatedTo(ChronoUnit.MINUTES);
+
+        for (String code : MOCK_STOCKS) {
+            String tickKey = "tick:" + code;
+            List<String> tickJsons = redisTemplate.opsForList().range(tickKey, 0, -1);
+            if (tickJsons == null || tickJsons.isEmpty()) continue;
+
+            // JSON → TransactionRecord
+            List<TransactionRecord> ticks = new ArrayList<>();
+            for (String json : tickJsons) {
+                try {
+                    ticks.add(objectMapper.readValue(json, TransactionRecord.class));
+                } catch (JsonProcessingException ignored) {}
+            }
+            if (ticks.isEmpty()) continue;
+
+            // 聚合 OHLCV
+            BigDecimal open = ticks.get(0).price();
+            BigDecimal close = ticks.get(ticks.size() - 1).price();
+            BigDecimal high = ticks.stream()
+                    .map(TransactionRecord::price)
+                    .max(BigDecimal::compareTo).orElse(open);
+            BigDecimal low = ticks.stream()
+                    .map(TransactionRecord::price)
+                    .min(BigDecimal::compareTo).orElse(open);
+            long volume = ticks.stream().mapToLong(TransactionRecord::quantity).sum();
+
+            // 写入 kline_5m_data
+            Kline5mData kline = new Kline5mData();
+            kline.setStockCode(code);
+            kline.setPeriodStartTime(periodStart);
+            kline.setOpenPrice(open);
+            kline.setClosePrice(close);
+            kline.setHighPrice(high);
+            kline.setLowPrice(low);
+            kline.setVolume(volume);
+            kline5mDataMapper.insert(kline);
+
+            // 清空已消费的 tick
+            redisTemplate.delete(tickKey);
+        }
     }
 }
