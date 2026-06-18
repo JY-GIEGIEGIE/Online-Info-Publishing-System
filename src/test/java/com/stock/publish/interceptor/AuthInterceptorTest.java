@@ -1,6 +1,6 @@
 package com.stock.publish.interceptor;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.stock.publish.entity.LocalUserSubscription;
 import com.stock.publish.mapper.LocalUserSubscriptionMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -117,7 +117,7 @@ class AuthInterceptorTest {
         request.addHeader("Authorization", "Bearer valid_token");
 
         // 桩实现（Stubing）：当通过条件构造器查询本地订阅表时，模拟返回 null（代表该用户是第一次访问本系统的全新用户）
-        when(subscriptionMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
+        when(subscriptionMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
 
         // Act: 执行被测方法
         boolean result = authInterceptor.preHandle(request, response, new Object());
@@ -146,7 +146,7 @@ class AuthInterceptorTest {
         subscription.setIsPremium(true); // 标记此人已购买 VIP 服务
 
         // 桩实现：模拟查库返回该 VIP 用户记录
-        when(subscriptionMapper.selectOne(any(QueryWrapper.class))).thenReturn(subscription);
+        when(subscriptionMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(subscription);
 
         // Act: 执行
         boolean result = authInterceptor.preHandle(request, response, new Object());

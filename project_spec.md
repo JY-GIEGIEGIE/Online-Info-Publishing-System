@@ -248,7 +248,7 @@ POST /api/publish/user/upgrade
 |------|------|----------|
 | `POST {account-system}/api/v1/auth/certificate-validate` | 验证 Token + 证书绑定 | AuthInterceptor 每次请求 |
 | `GET {central-trade}/api/v1/stock/list` | 全量股票字典 | 开盘前/启动时同步 |
-| `GET {central-trade}/api/v1/transaction/recent` | 近期成交流水 | 每 5 秒轮询 |
+| `GET {central-trade}/api/v1/transaction/recent` | 近期成交流水 + 盘口快照（合并推送）。成交流水无数据时返回空数组，盘口照常返回。盘口字段：bidPrice、bidVolume、askPrice、askVolume | 每 5 秒轮询 |
 
 ---
 

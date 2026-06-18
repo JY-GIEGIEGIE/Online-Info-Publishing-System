@@ -38,3 +38,4 @@ apache-maven-*/
 # Temporary
 *.tmp
 *.bak
+jdk-17.0.12+7/
