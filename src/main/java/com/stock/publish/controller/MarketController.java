@@ -1,6 +1,8 @@
 package com.stock.publish.controller;
 
 import com.stock.publish.calculation.KLineAggregator;
+import com.stock.publish.dto.ApiResponse;
+import com.stock.publish.dto.QuoteDTO;
 import com.stock.publish.service.MarketService;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,11 +18,16 @@ public class MarketController {
         this.kLineAggregator = kLineAggregator;
     }
 
+
     @GetMapping("/quote/{stockCode}")
-    public Object quote(@PathVariable String stockCode) {
-        // TODO: GET /api/publish/market/quote/{stockCode}
+    public ApiResponse<QuoteDTO> quote(@PathVariable String stockCode) {
+        // DONE: GET /api/publish/market/quote/{stockCode}
         // 权限：GUEST (仅价格) / STANDARD (附加 top_buyer, top_seller, 盘口)
-        throw new UnsupportedOperationException("TODO");
+        QuoteDTO quote = marketService.getQuote(stockCode);
+        if (quote == null) {
+            return ApiResponse.fail(404, "股票未找到");
+        }
+        return ApiResponse.ok(quote);
     }
 
     @GetMapping("/kline")

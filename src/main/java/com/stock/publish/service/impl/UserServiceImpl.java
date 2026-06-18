@@ -1,6 +1,6 @@
 package com.stock.publish.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.stock.publish.entity.LocalUserSubscription;
 import com.stock.publish.mapper.LocalUserSubscriptionMapper;
 import com.stock.publish.service.UserService;
@@ -20,10 +20,10 @@ public class UserServiceImpl implements UserService {
     @Override
     public void upgradeToVip(String globalUserId) {
         // 更新用户记录，将 is_premium 置为 true 并更新 upgrade_time
-        LambdaUpdateWrapper<LocalUserSubscription> updateWrapper = new LambdaUpdateWrapper<>();
-        updateWrapper.eq(LocalUserSubscription::getGlobalUserId, globalUserId)
-                .set(LocalUserSubscription::getIsPremium, true)
-                .set(LocalUserSubscription::getUpgradeTime, LocalDateTime.now());
+        UpdateWrapper<LocalUserSubscription> updateWrapper = new UpdateWrapper<>();
+        updateWrapper.eq("global_user_id", globalUserId)
+                .set("is_premium", true)
+                .set("upgrade_time", LocalDateTime.now());
 
         int rows = subscriptionMapper.update(null, updateWrapper);
 
