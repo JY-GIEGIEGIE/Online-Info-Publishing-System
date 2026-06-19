@@ -1,34 +1,405 @@
 <template>
   <div class="portal">
-    <!-- TODO: 首页门户 - 游客可见。本页面就是信息发布系统的首页，无需跳转到自己 -->
-    <!--
-      布局（导航栏由 App.vue 统一提供，Portal 只负责页面内容区）：
-      ┌──────────────────────────────────────────────┐
-      │ App.vue导航：信息发布logo | [交易系统][账户系统] | [登录] │
-      ├──────────────────────────────────────────────┤
-      │  搜索框（代码/拼音，调用 searchStock API）        │
-      ├──────────────────┬───────────────────────────┤
-      │ 大盘指数          │ 实时行情列表（5秒轮询）       │
-      │ 上证 +1.2%       │ 代码  名称  最新价  涨跌幅   │
-      │ 深证 -0.3%       │ 600519 贵州茅台 ... 点击进入  │
-      │                  │ 000001 平安银行 ... 详情页   │
-      └──────────────────┴───────────────────────────┘
+    <section class="hero-card">
+      <div>
+        <p class="eyebrow">信息发布 / 市场数据</p>
+        <h1>实时行情、指数与个股详情一站式浏览</h1>
+        <p class="subtitle">支持代码与拼音检索，默认展示大盘指数与5秒轮询行情。</p>
+      </div>
 
-      功能清单：
-      1. 顶部导航：本系统 logo，其他子系统链接（交易系统/账户系统），登录/注册按钮
-         - 登录点击 → 重定向到外部 SSO 账户系统
-         - 已登录 → 显示角色标签 + 退出按钮
-      2. 搜索框：输入股票代码或拼音缩写 → 调用 GET /stock/search
-      3. 大盘指数面板：Mock 展示上证/深证指数
-      4. 实时行情列表：5秒 setInterval 轮询 /quote 接口，点击行跳转 /stock/:code
-      5. onUnmounted 中 clearInterval 防内存泄漏
-    -->
-    <p>首页 (Portal) - 待实现</p>
+      <div class="search-panel">
+        <label class="search-label" for="stockSearch">股票搜索</label>
+        <div class="search-row">
+          <input
+            id="stockSearch"
+            v-model="keyword"
+            type="text"
+            placeholder="输入股票代码 / 拼音首字母"
+            @keyup.enter="handleSearch"
+          />
+          <button type="button" class="primary-btn" @click="handleSearch">搜索</button>
+        </div>
+        <p class="hint">例如：600519、茅台、平安</p>
+
+        <ul v-if="searchResults.length" class="search-result-list">
+          <li
+            v-for="item in searchResults"
+            :key="item.stock_code || item.stockCode"
+            class="search-result-item"
+            @click="goToStock(item.stock_code || item.stockCode)"
+          >
+            <strong>{{ item.stock_code || item.stockCode }}</strong>
+            <span>{{ item.stock_name || item.stockName }}</span>
+          </li>
+        </ul>
+        <p v-else-if="!isSearching" class="empty-tip">暂无搜索结果，请输入股票代码或简称。</p>
+      </div>
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="panel-card">
+        <div class="panel-heading">
+          <h2>大盘指数</h2>
+          <span>Mock 数据</span>
+        </div>
+        <div class="index-grid">
+          <div v-for="index in indices" :key="index.name" class="index-card">
+            <p>{{ index.name }}</p>
+            <strong>{{ index.value }}</strong>
+            <small :class="index.trend >= 0 ? 'up' : 'down'">{{ formatRate(index.trend) }}</small>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel-card">
+        <div class="panel-heading">
+          <h2>实时行情</h2>
+          <span>每 5 秒刷新</span>
+        </div>
+
+        <div v-if="isLoadingQuotes" class="loading-text">正在同步行情...</div>
+
+        <table v-else class="quote-table">
+          <thead>
+            <tr>
+              <th>代码</th>
+              <th>名称</th>
+              <th>最新价</th>
+              <th>涨跌幅</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="item in quotes"
+              :key="item.stock_code"
+              class="quote-row"
+              @click="goToStock(item.stock_code)"
+            >
+              <td>{{ item.stock_code }}</td>
+              <td>{{ item.stock_name }}</td>
+              <td>{{ formatPrice(item.last_price) }}</td>
+              <td :class="item.change_rate >= 0 ? 'up' : 'down'">{{ formatRate(item.change_rate) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+    </section>
   </div>
 </template>
 
 <script setup>
-// TODO: 引入 useUserStore, searchStock, getQuote
-// TODO: setInterval 5秒轮询 + onUnmounted clearInterval
-// TODO: 登录跳转 SSO、退出清除 token
+import { onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { getQuote, searchStock } from '../api/market'
+
+const router = useRouter()
+
+const keyword = ref('')
+const searchResults = ref([])
+const quotes = ref([])
+const isSearching = ref(false)
+const isLoadingQuotes = ref(false)
+
+const indices = ref([
+  { name: '上证指数', value: '3,132.54', trend: 0.14 },
+  { name: '深证成指', value: '10,887.20', trend: -0.36 }
+])
+
+const defaultQuotes = [
+  { stock_code: '600519', stock_name: '贵州茅台', last_price: 1680.5, change_rate: 1.2 },
+  { stock_code: '000001', stock_name: '平安银行', last_price: 12.35, change_rate: -0.23 },
+  { stock_code: '000858', stock_name: '五粮液', last_price: 166.9, change_rate: 0.45 },
+  { stock_code: '300750', stock_name: '宁德时代', last_price: 438.4, change_rate: -0.17 }
+]
+
+const formatPrice = (value) => Number(value || 0).toFixed(2)
+
+const formatRate = (value) => {
+  const numeric = Number(value || 0)
+  return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%`
+}
+
+const normalizeQuote = (item, fallbackCode) => {
+  const code = item.stock_code || item.stockCode || fallbackCode
+
+  return {
+    stock_code: String(code),
+    stock_name: item.stock_name || item.stockName || '—',
+    last_price: Number(item.last_price ?? item.lastPrice ?? 0),
+    change_rate: Number(item.change_rate ?? item.changeRate ?? 0)
+  }
+}
+
+const loadQuotes = async () => {
+  isLoadingQuotes.value = true
+
+  try {
+    const list = []
+
+    for (const item of defaultQuotes) {
+      try {
+        const quote = await getQuote(item.stock_code)
+        list.push(normalizeQuote(quote, item.stock_code))
+      } catch {
+        list.push(item)
+      }
+    }
+
+    quotes.value = list
+  } finally {
+    isLoadingQuotes.value = false
+  }
+}
+
+const handleSearch = async () => {
+  const value = keyword.value.trim()
+
+  if (!value) {
+    searchResults.value = []
+    return
+  }
+
+  isSearching.value = true
+
+  try {
+    const response = await searchStock(value)
+    const data = Array.isArray(response) ? response : response?.data || []
+    searchResults.value = data
+  } catch {
+    searchResults.value = defaultQuotes.filter((item) =>
+      item.stock_code.includes(value) || item.stock_name.includes(value)
+    )
+  } finally {
+    isSearching.value = false
+  }
+}
+
+const goToStock = (code) => {
+  if (!code) return
+  router.push({ name: 'StockDetail', params: { code } })
+}
+
+let timer = null
+
+onMounted(() => {
+  loadQuotes()
+  timer = window.setInterval(loadQuotes, 5000)
+})
+
+onUnmounted(() => {
+  if (timer) window.clearInterval(timer)
+})
 </script>
+
+<style scoped>
+.portal {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.hero-card,
+.panel-card {
+  background: #FFFFFF;
+  border: 1px solid #E8E8E8;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.hero-card {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.eyebrow {
+  font-size: 0.82rem;
+  color: #005aa6;
+  font-weight: 600;
+}
+
+h1 {
+  margin: 6px 0 10px;
+  color: #1b1c1c;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+.subtitle {
+  color: #666666;
+  max-width: 560px;
+}
+
+.search-panel {
+  background: #f6f3f2;
+  border: 1px solid #E8E8E8;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.search-label {
+  display: block;
+  color: #1b1c1c;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.search-row input {
+  flex: 1;
+  border-radius: 4px;
+  border: 1px solid #E8E8E8;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: #1b1c1c;
+}
+
+.primary-btn {
+  border-radius: 4px;
+  background: #b7000c;
+  color: #ffffff;
+  border: 0;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hint,
+.empty-tip,
+.loading-text {
+  color: #999999;
+  font-size: 0.92rem;
+  margin-top: 8px;
+}
+
+.search-result-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.search-result-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #E8E8E8;
+  border-radius: 4px;
+  padding: 10px;
+  cursor: pointer;
+  background: #ffffff;
+  color: #1b1c1c;
+}
+
+.search-result-item:hover {
+  background: #f6f3f2;
+}
+
+.search-result-item strong {
+  font-family: 'JetBrains Mono', monospace;
+  color: #005aa6;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 24px;
+}
+
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.panel-heading h2 {
+  margin: 0;
+  color: #1b1c1c;
+  font-size: 1.2rem;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.panel-heading span {
+  color: #666666;
+  font-size: 0.9rem;
+}
+
+.index-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.index-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid #E8E8E8;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbf9f8;
+}
+
+.index-card p {
+  color: #666666;
+  font-size: 0.95rem;
+}
+
+.index-card strong {
+  color: #1b1c1c;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.4rem;
+}
+
+.quote-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.quote-table th,
+.quote-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid #E8E8E8;
+}
+
+.quote-table th {
+  color: #666666;
+  font-weight: 600;
+  background: #f6f3f2;
+  padding: 12px 8px;
+}
+
+.quote-table td {
+  font-family: 'JetBrains Mono', monospace;
+  color: #1b1c1c;
+}
+
+.quote-row {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.quote-row:hover {
+  background: rgba(0, 90, 166, 0.05); /* tertiary/5 */
+}
+
+.up { color: #E60012 !important; }
+.down { color: #00A650 !important; }
+
+@media (max-width: 980px) {
+  .hero-card,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

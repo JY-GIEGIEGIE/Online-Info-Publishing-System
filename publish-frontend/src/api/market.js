@@ -1,32 +1,57 @@
 import axios from 'axios'
-
-// TODO: 创建 axios 实例，baseURL = '/api/publish'
-// TODO: 请求拦截器：从 userStore 读取 token，注入 Authorization header
-// TODO: 响应拦截器：统一解析 { code, message, data } 结构
+import { useUserStore } from '../stores/user'
 
 const api = axios.create({
   baseURL: '/api/publish',
   timeout: 10000
 })
 
+const unwrapResponse = (payload) => {
+  if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'code')) {
+    if (payload.code !== 200 && payload.code !== 0) {
+      throw new Error(payload.message || 'Request failed')
+    }
+    return payload.data ?? payload
+  }
+
+  return payload
+}
+
+api.interceptors.request.use((config) => {
+  const userStore = useUserStore()
+
+  if (userStore.token) {
+    config.headers = {
+      ...(config.headers || {}),
+      Authorization: `Bearer ${userStore.token}`
+    }
+  }
+
+  return config
+})
+
+api.interceptors.response.use(
+  (response) => unwrapResponse(response.data),
+  (error) => {
+    const message = error.response?.data?.message || error.message || 'Request failed'
+    return Promise.reject(new Error(message))
+  }
+)
+
 export function searchStock(keyword) {
-  // TODO: GET /stock/search?keyword={xx}
-  throw new Error('TODO')
+  return api.get('/stock/search', { params: { keyword } })
 }
 
 export function getQuote(stockCode) {
-  // TODO: GET /market/quote/{stockCode}
-  throw new Error('TODO')
+  return api.get(`/market/quote/${stockCode}`)
 }
 
 export function getKLine(stockCode, period = '1D') {
-  // TODO: GET /market/kline?stockCode={xx}&period={xx}
-  throw new Error('TODO')
+  return api.get('/market/kline', { params: { stockCode, period } })
 }
 
 export function upgradeToVip() {
-  // TODO: POST /user/upgrade
-  throw new Error('TODO')
+  return api.post('/user/upgrade')
 }
 
 export default api
