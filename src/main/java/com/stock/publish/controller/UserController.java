@@ -15,6 +15,17 @@ public class UserController {
         this.userService = userService;
     }
 
+    @GetMapping("/me")
+    public ApiResponse<UserRoleInfo> me() {
+        UserContext.UserRole role = UserContext.getRole();
+        return ApiResponse.ok(new UserRoleInfo(
+                UserContext.getGlobalUserId(),
+                role.name(),
+                role == UserContext.UserRole.PREMIUM_VIP));
+    }
+
+    public record UserRoleInfo(String globalUserId, String role, boolean isPremium) {}
+
     @PostMapping("/upgrade")
     public ApiResponse<Void> upgrade() {
         // 获取目前用户角色
