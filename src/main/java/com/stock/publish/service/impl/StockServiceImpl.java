@@ -23,6 +23,8 @@ public class StockServiceImpl implements StockService {
         LambdaQueryWrapper<SyncStockInfo> wrapper = new LambdaQueryWrapper<>();
         wrapper.like(SyncStockInfo::getStockCode, keyword)
                 .or()
+                .like(SyncStockInfo::getStockName, keyword)
+                .or()
                 .like(SyncStockInfo::getPinyinAbbr, keyword)
                 .last("LIMIT 10");
         return stockInfoMapper.selectList(wrapper);

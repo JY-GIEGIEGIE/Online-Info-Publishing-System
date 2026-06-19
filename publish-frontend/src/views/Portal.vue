@@ -3,7 +3,7 @@
     <section class="hero-card">
       <div>
         <p class="eyebrow">信息发布 / 市场数据</p>
-        <h1>实时行情、指数与个股详情一站式浏览</h1>
+        <h1>实时行情、指数与个股详情<br>一站式浏览</h1>
         <p class="subtitle">支持代码与拼音检索，默认展示大盘指数与5秒轮询行情。</p>
       </div>
 
@@ -19,7 +19,7 @@
           />
           <button type="button" class="primary-btn" @click="handleSearch">搜索</button>
         </div>
-        <p class="hint">例如：600519、茅台、平安</p>
+        <p class="hint">例如：600519、茅台、GZMT</p>
 
         <ul v-if="searchResults.length" class="search-result-list">
           <li
