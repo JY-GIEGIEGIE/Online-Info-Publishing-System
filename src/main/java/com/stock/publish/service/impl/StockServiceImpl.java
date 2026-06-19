@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.stock.publish.entity.SyncStockInfo;
 import com.stock.publish.mapper.SyncStockInfoMapper;
 import com.stock.publish.service.StockService;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -17,11 +18,23 @@ public class StockServiceImpl implements StockService {
         this.stockInfoMapper = stockInfoMapper;
     }
 
+    @PostConstruct
+    public void init() {
+        // 启动时自动同步，忽略重复插入
+        try {
+            syncFromCentralSystem();
+        } catch (Exception ignored) {
+            // 数据已存在则跳过
+        }
+    }
+
     @Override
     public List<SyncStockInfo> search(String keyword) {
         // DONE: 模糊搜索：stock_code LIKE keyword OR pinyin_abbr LIKE keyword，LIMIT 10
         LambdaQueryWrapper<SyncStockInfo> wrapper = new LambdaQueryWrapper<>();
         wrapper.like(SyncStockInfo::getStockCode, keyword)
+                .or()
+                .like(SyncStockInfo::getStockName, keyword)
                 .or()
                 .like(SyncStockInfo::getPinyinAbbr, keyword)
                 .last("LIMIT 10");
