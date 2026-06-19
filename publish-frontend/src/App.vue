@@ -10,8 +10,8 @@
 
       <div class="actions">
         <span v-if="userStore.token" class="role-pill">{{ roleLabel }}</span>
-        <button v-if="!userStore.token" class="ghost-btn" type="button" @click="handleLogin">登录</button>
-        <button v-if="!userStore.token" class="primary-btn" type="button" @click="handleLogin">注册</button>
+        <button v-if="!userStore.token" class="ghost-btn" type="button" @click="handleLogin">登录(STANDARD)</button>
+        <button v-if="!userStore.token" class="primary-btn" type="button" @click="handleVipLogin">登录(VIP)</button>
         <button v-else class="ghost-btn" type="button" @click="handleLogout">退出</button>
       </div>
     </header>
@@ -37,8 +37,19 @@ const roleLabel = computed(() => {
 })
 
 const handleLogin = () => {
-  const target = encodeURIComponent(window.location.href)
-  window.location.href = `https://account.example.com/login?redirect=${target}`
+  // Mock SSO 登录：写入 token，AuthInterceptor 识别为 STANDARD（sec_acc_no=S0001）
+  userStore.setToken('valid_token')
+  userStore.setRole('STANDARD')
+  userStore.setGlobalUserId('F0001')
+  router.push('/')
+}
+
+const handleVipLogin = () => {
+  // Mock VIP 登录（vip_token → AuthInterceptor 返回 fundAccNo=F0002，DB 里 is_premium=true）
+  userStore.setToken('vip_token')
+  userStore.setRole('PREMIUM_VIP')
+  userStore.setGlobalUserId('F0002')
+  router.push('/')
 }
 
 const handleLogout = () => {

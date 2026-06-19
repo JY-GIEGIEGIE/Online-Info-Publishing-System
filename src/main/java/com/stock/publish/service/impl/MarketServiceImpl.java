@@ -40,7 +40,8 @@ public class MarketServiceImpl implements MarketService {
     private final TopTraderEngine topTraderEngine;
     private final ObjectMapper objectMapper;
 
-    private static final List<String> MOCK_STOCKS = List.of("600519", "000001");
+    private static final List<String> MOCK_STOCKS = List.of(
+            "600519", "000001", "000858", "300750", "600036", "601318");
 
     public MarketServiceImpl(StringRedisTemplate redisTemplate,
                              RedissonClient redissonClient,
@@ -236,15 +237,26 @@ public class MarketServiceImpl implements MarketService {
     private List<TransactionRecord> mockTransactions() {
         List<TransactionRecord> list = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
-        // Mock 两只股票各一笔成交
-        list.add(new TransactionRecord("600519", now.minusSeconds(2),
-                "买方A", "卖方B", new BigDecimal("1680.00"), 5000L));
-        list.add(new TransactionRecord("000001", now.minusSeconds(1),
-                "买方C", "卖方D", new BigDecimal("12.50"), 30000L));
+        for (String code : MOCK_STOCKS) {
+            SyncStockInfo info = stockInfoMapper.selectById(code);
+            if (info == null) continue;
+            BigDecimal base = info.getYesterdayClose();
+            // 每只股票生成 1~3 笔成交，价格在昨收 ±0.5% 内随机浮动
+            int count = 1 + (int) (Math.random() * 3);
+            for (int i = 0; i < count; i++) {
+                double pct = (Math.random() - 0.5) * 0.01; // -0.5% ~ +0.5%
+                BigDecimal price = base.multiply(BigDecimal.valueOf(1.0 + pct))
+                        .setScale(2, RoundingMode.HALF_UP);
+                long qty = 1000L + (long) (Math.random() * 50000);
+                list.add(new TransactionRecord(code, now.minusSeconds(count - i),
+                        "买方" + (char) ('A' + i), "卖方" + (char) ('X' + i), price, qty));
+            }
+        }
         return list;
     }
 
-    @Scheduled(initialDelay = 300000, fixedRate = 300000)
+    // TODO 测试后改回 300000
+    @Scheduled(initialDelay = 60000, fixedRate = 300000)
     public void aggregate5mKline() {
         // DONE: 1. 从 Redis "tick:{stockCode}" 取出过去5分钟的所有 tick
         // DONE: 2. 聚合为 OHLCV

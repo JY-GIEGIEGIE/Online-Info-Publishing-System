@@ -47,6 +47,9 @@ public class AuthInterceptor implements HandlerInterceptor {
         if ("no_cert_token".equals(token)) {
             secAccNo = null; // 模拟证书未绑定
         }
+        if ("vip_token".equals(token)) {
+            fundAccNo = "F0002"; // Mock VIP 用户
+        }
 
         // 登录失败 或 证书未绑定 → 降级 GUEST
         if (!authSuccess || secAccNo == null || secAccNo.isEmpty()) {
