@@ -27,6 +27,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 @EnableScheduling
@@ -41,6 +43,9 @@ public class MarketServiceImpl implements MarketService {
     private final ObjectMapper objectMapper;
 
     private static final List<String> MOCK_STOCKS = List.of("600519", "000001");
+
+    // 记录每只股票上一次的成交价，实现随机游走
+    private final Map<String, BigDecimal> lastMockPrice = new ConcurrentHashMap<>();
 
     public MarketServiceImpl(StringRedisTemplate redisTemplate,
                              RedissonClient redissonClient,
@@ -236,11 +241,37 @@ public class MarketServiceImpl implements MarketService {
     private List<TransactionRecord> mockTransactions() {
         List<TransactionRecord> list = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
-        // Mock 两只股票各一笔成交
-        list.add(new TransactionRecord("600519", now.minusSeconds(2),
-                "买方A", "卖方B", new BigDecimal("1680.00"), 5000L));
-        list.add(new TransactionRecord("000001", now.minusSeconds(1),
-                "买方C", "卖方D", new BigDecimal("12.50"), 30000L));
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+
+        for (String code : MOCK_STOCKS) {
+            // 以昨收价为基准，后续价格在其附近随机游走
+            BigDecimal basePrice = lastMockPrice.get(code);
+            if (basePrice == null) {
+                SyncStockInfo info = stockInfoMapper.selectById(code);
+                basePrice = (info != null) ? info.getYesterdayClose() : BigDecimal.valueOf(100);
+            }
+
+            // 每 5 秒生成 2-4 笔成交，模拟真实 tick 流
+            int ticks = rng.nextInt(2, 5);
+            for (int i = 0; i < ticks; i++) {
+                // 随机波动 ±0.5%
+                double change = basePrice.doubleValue() * (rng.nextDouble(-0.005, 0.005));
+                BigDecimal newPrice = basePrice.add(BigDecimal.valueOf(change))
+                        .setScale(2, RoundingMode.HALF_UP);
+
+                // 随机买卖方、成交量
+                String buyer = "买方" + (char) ('A' + rng.nextInt(26));
+                String seller = "卖方" + (char) ('A' + rng.nextInt(26));
+                long volume = rng.nextLong(1000, 50000);
+
+                list.add(new TransactionRecord(code, now.minusSeconds(ticks - i),
+                        buyer, seller, newPrice, volume));
+
+                // 最后一笔价格作为下一次的基准
+                basePrice = newPrice;
+            }
+            lastMockPrice.put(code, basePrice);
+        }
         return list;
     }
 
