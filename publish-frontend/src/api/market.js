@@ -54,4 +54,8 @@ export function upgradeToVip() {
   return api.post('/user/upgrade')
 }
 
+export function getMyInfo() {
+  return api.get('/user/me')
+}
+
 export default api
