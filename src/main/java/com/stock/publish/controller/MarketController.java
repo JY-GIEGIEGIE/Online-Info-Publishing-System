@@ -3,12 +3,15 @@ package com.stock.publish.controller;
 import com.stock.publish.calculation.KLineAggregator;
 import com.stock.publish.calculation.TopTraderEngine;
 import com.stock.publish.dto.ApiResponse;
+import com.stock.publish.dto.KLineDTO;
 import com.stock.publish.dto.QuoteDTO;
 import com.stock.publish.interceptor.UserContext;
 import com.stock.publish.service.MarketService;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @RestController
 @RequestMapping("/market")
@@ -48,6 +51,16 @@ public class MarketController {
 
         LocalDateTime end = LocalDateTime.now();
         LocalDateTime start = end.minusYears(1);
-        return ApiResponse.ok(kLineAggregator.getKLineData(stockCode, period, start, end));
+        List<KLineDTO> data = kLineAggregator.getKLineData(stockCode, period, start, end);
+
+        // STANDARD 保留 MA5/MA10，清除 MACD（VIP 解锁）
+        if (role == UserContext.UserRole.STANDARD) {
+            for (KLineDTO k : data) {
+                k.setDif(null);
+                k.setDea(null);
+                k.setMacdBar(null);
+            }
+        }
+        return ApiResponse.ok(data);
     }
 }

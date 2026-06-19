@@ -1,5 +1,6 @@
 <template>
   <div class="stock-detail">
+    <router-link to="/" class="back-link">← 返回行情列表</router-link>
     <!-- 顶部信息卡：所有角色（含 GUEST）均可见 -->
     <header class="quote-header card">
       <div class="header-main">
@@ -202,6 +203,15 @@ onUnmounted(() => {
 
 <style scoped>
 /* ===== 主题色：浅色卡片风格（参照样例），集中此处便于团队统一替换 ===== */
+.back-link {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: #666;
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+.back-link:hover { color: #b7000c; }
+
 .stock-detail {
   --bg: #f5f6fa;
   --card-bg: #ffffff;
