@@ -50,6 +50,10 @@ export function getKLine(stockCode, period = '1D') {
   return api.get('/market/kline', { params: { stockCode, period } })
 }
 
+export function getUserMe() {
+  return api.get('/user/me')
+}
+
 export function upgradeToVip() {
   return api.post('/user/upgrade')
 }
