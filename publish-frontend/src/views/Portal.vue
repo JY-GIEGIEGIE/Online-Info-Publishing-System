@@ -111,7 +111,9 @@ const defaultQuotes = [
   { stock_code: '600519', stock_name: '贵州茅台', last_price: 1680.5, change_rate: 1.2 },
   { stock_code: '000001', stock_name: '平安银行', last_price: 12.35, change_rate: -0.23 },
   { stock_code: '000858', stock_name: '五粮液', last_price: 166.9, change_rate: 0.45 },
-  { stock_code: '300750', stock_name: '宁德时代', last_price: 438.4, change_rate: -0.17 }
+  { stock_code: '300750', stock_name: '宁德时代', last_price: 438.4, change_rate: -0.17 },
+  { stock_code: '600036', stock_name: '招商银行', last_price: 38.50, change_rate: 0.0 },
+  { stock_code: '601318', stock_name: '中国平安', last_price: 45.60, change_rate: 0.0 }
 ]
 
 const formatPrice = (value) => Number(value || 0).toFixed(2)
