@@ -121,7 +121,14 @@ const handleUpgrade = async () => {
     phone.value = ''
     code.value = ''
   } catch (err) {
-    alert('升级失败，请稍后重试')
+    const msg = err?.message || err
+    if (msg && msg.includes('已经是VIP')) {
+      alert('您已经是VIP用户！')
+      userStore.setRole('PREMIUM_VIP')
+      emit('close')
+    } else {
+      alert('升级失败，请稍后重试')
+    }
   }
 }
 </script>
