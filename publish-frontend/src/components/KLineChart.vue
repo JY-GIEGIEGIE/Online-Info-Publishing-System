@@ -122,10 +122,10 @@ function renderChart() {
   const kData = data.map(item => [item.open, item.close, item.low, item.high])
   const ma5 = calcMA(data, 5)
   const ma10 = calcMA(data, 10)
-  const { difList, deaList, macdBar } = calcMACD(data)
 
-  // 检测是否包含 MACD 数据（STANDARD 会被后端清为 null）
-  const hasMACD = difList.some(v => v != null)
+  // 以后端数据为准：dif 为 null 表示无 MACD（STANDARD）
+  const hasMACD = data.some(item => item.dif != null)
+  const { difList, deaList, macdBar } = hasMACD ? calcMACD(data) : { difList: [], deaList: [], macdBar: [] }
 
   const legendData = hasMACD
     ? ['K线', 'MA5', 'MA10', 'DIF', 'DEA', 'MACD']
