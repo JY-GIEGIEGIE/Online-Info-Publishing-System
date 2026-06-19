@@ -59,7 +59,8 @@
 
         <div v-if="isLoadingQuotes" class="loading-text">正在同步行情...</div>
 
-        <table v-else class="quote-table">
+        <div v-else class="table-scroll">
+        <table class="quote-table">
           <thead>
             <tr>
               <th>代码</th>
@@ -82,6 +83,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
       </article>
     </section>
   </div>
@@ -358,6 +360,11 @@ h1 {
   color: #1b1c1c;
   font-family: 'JetBrains Mono', monospace;
   font-size: 1.4rem;
+}
+
+.table-scroll {
+  max-height: 420px;
+  overflow-y: auto;
 }
 
 .quote-table {
