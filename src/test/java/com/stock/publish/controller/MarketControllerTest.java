@@ -73,15 +73,15 @@ class MarketControllerTest {
     }
 
     @Test
-    void testKlineStandardAccess1H() throws Exception {
+    void testKlineStandardAccess1W() throws Exception {
         mockedUserContext.when(UserContext::getRole).thenReturn(UserContext.UserRole.STANDARD);
 
         mockMvc.perform(get("/market/kline")
                         .param("stockCode", "600519")
-                        .param("period", "1H"))
+                        .param("period", "1W"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.message").value("普通用户仅可查看日K线(1D)"));
+                .andExpect(jsonPath("$.message").value("升级VIP解锁周/月/年K线"));
     }
 
     @Test
