@@ -8,7 +8,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api/publish': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8083',
         changeOrigin: true
       }
     }

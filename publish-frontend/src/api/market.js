@@ -20,10 +20,10 @@ const unwrapResponse = (payload) => {
 api.interceptors.request.use((config) => {
   const userStore = useUserStore()
 
-  if (userStore.token) {
+  if (userStore.globalUserId) {
     config.headers = {
       ...(config.headers || {}),
-      Authorization: `Bearer ${userStore.token}`
+      'X-Fund-Acc-No': userStore.globalUserId
     }
   }
 

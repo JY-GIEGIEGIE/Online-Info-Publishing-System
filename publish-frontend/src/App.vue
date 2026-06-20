@@ -4,14 +4,21 @@
       <router-link class="brand" to="/">网上信息发布</router-link>
 
       <nav class="subsystem-links">
-        <a href="https://trade.example.com" target="_blank" rel="noopener noreferrer">交易系统</a>
-        <a href="https://account.example.com" target="_blank" rel="noopener noreferrer">账户系统</a>
+        <a :href="accountSysUrl" target="_blank" rel="noopener noreferrer">账户系统</a>
+        <a :href="tradeClientUrl" target="_blank" rel="noopener noreferrer">交易客户端</a>
+        <a :href="tradeMgmtUrl" target="_blank" rel="noopener noreferrer">交易管理</a>
       </nav>
 
       <div class="actions">
-        <span v-if="userStore.token" class="role-pill">{{ roleLabel }}</span>
-        <button v-if="!userStore.token" class="ghost-btn" type="button" @click="handleLogin">登录(STANDARD)</button>
-        <button v-if="!userStore.token" class="primary-btn" type="button" @click="handleVipLogin">登录(VIP)</button>
+        <span v-if="userStore.globalUserId" class="role-pill">{{ roleLabel }}</span>
+        <template v-if="!userStore.globalUserId">
+          <button class="ghost-btn" type="button"
+                  @click="window.open(accountSysUrl, '_blank')">登录</button>
+          <button class="primary-btn" type="button"
+                  @click="window.open(accountSysUrl, '_blank')">注册</button>
+          <input v-model="fundAccNoInput" class="fund-input"
+                 placeholder="登录后粘贴资金账号" @keyup.enter="applyFundAccNo" />
+        </template>
         <button v-else class="ghost-btn" type="button" @click="handleLogout">退出</button>
       </div>
     </header>
@@ -23,12 +30,17 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from './stores/user'
 
+const accountSysUrl = 'http://localhost:5173'
+const tradeClientUrl = 'http://localhost:8090'
+const tradeMgmtUrl = 'http://localhost:8080'
+
 const router = useRouter()
 const userStore = useUserStore()
+const fundAccNoInput = ref('')
 
 const roleLabel = computed(() => {
   if (userStore.isPremiumVip) return 'PREMIUM_VIP'
@@ -36,24 +48,17 @@ const roleLabel = computed(() => {
   return 'GUEST'
 })
 
-const handleLogin = () => {
-  // Mock SSO 登录：写入 token，AuthInterceptor 识别为 STANDARD（sec_acc_no=S0001）
-  userStore.setToken('valid_token')
-  userStore.setRole('STANDARD')
-  userStore.setGlobalUserId('F0001')
-  router.push('/')
-}
-
-const handleVipLogin = () => {
-  // Mock VIP 登录（vip_token → AuthInterceptor 返回 fundAccNo=F0002，DB 里 is_premium=true）
-  userStore.setToken('vip_token')
-  userStore.setRole('PREMIUM_VIP')
-  userStore.setGlobalUserId('F0002')
+const applyFundAccNo = () => {
+  const v = fundAccNoInput.value.trim()
+  if (!v) return
+  userStore.setGlobalUserId(v)
+  userStore.setRole('STANDARD')  // 登录成功后最低 STANDARD
   router.push('/')
 }
 
 const handleLogout = () => {
   userStore.logout()
+  fundAccNoInput.value = ''
   router.push('/')
 }
 </script>
@@ -144,6 +149,18 @@ const handleLogout = () => {
 .ghost-btn:hover {
   background: #f6f3f2;
 }
+
+.fund-input {
+  width: 160px;
+  height: 32px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 0.85rem;
+  background: #fff;
+  color: #333;
+}
+.fund-input::placeholder { color: #aaa; }
 
 .page-shell {
   padding: 24px;

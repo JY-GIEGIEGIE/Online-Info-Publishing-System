@@ -13,6 +13,10 @@ import com.stock.publish.mapper.SyncStockInfoMapper;
 import com.stock.publish.service.MarketService;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -39,6 +43,12 @@ public class MarketServiceImpl implements MarketService {
     private final Kline5mDataMapper kline5mDataMapper;
     private final TopTraderEngine topTraderEngine;
     private final ObjectMapper objectMapper;
+    private final RestTemplate restTemplate;
+
+    @Value("${subsystems.central-trade.base-url:http://localhost:8082}")
+    private String centralTradeBaseUrl;
+    @Value("${subsystems.central-trade.snapshot-path:/api/central-trading/market/snapshot}")
+    private String snapshotPath;
 
     private static final List<String> MOCK_STOCKS = List.of(
             "600519", "000001", "000858", "300750", "600036", "601318");
@@ -48,13 +58,15 @@ public class MarketServiceImpl implements MarketService {
                              SyncStockInfoMapper stockInfoMapper,
                              Kline5mDataMapper kline5mDataMapper,
                              TopTraderEngine topTraderEngine,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             RestTemplate restTemplate) {
         this.redisTemplate = redisTemplate;
         this.redissonClient = redissonClient;
         this.stockInfoMapper = stockInfoMapper;
         this.kline5mDataMapper = kline5mDataMapper;
         this.topTraderEngine = topTraderEngine;
         this.objectMapper = objectMapper;
+        this.restTemplate = restTemplate;
     }
 
     // 角色屏蔽方法
@@ -177,90 +189,78 @@ public class MarketServiceImpl implements MarketService {
     @Scheduled(cron = "*/5 * * * * *")
     @Override
     public void refreshQuotes() {
-        // DONE: 1. 从中央交易系统拉取最新成交流水（Mock）
-        // DONE: 2. 计算 last_price、change_rate
-        // DONE: 3. 写入 Redis "quote:{stockCode}" TTL 5s
-        // DONE: 4. 调用 TopTraderEngine.accumulate() 累加主力数据
-        // DONE: 5. 将 tick 推入 Redis List "tick:{stockCode}" 供 K线聚合
-        List<TransactionRecord> records = mockTransactions();
-        records.sort(Comparator.comparing(TransactionRecord::timestamp));
-
-        // 按时间戳排序后 put，后出现的覆盖前一条 → 每只股票保留最新成交价
-        Map<String, BigDecimal> lastPrices = new HashMap<>();
-        for (TransactionRecord record : records) {
-            if (record.stockCode != null) {
-                lastPrices.put(record.stockCode, record.price);
-            }
-        }
-
-        for (Map.Entry<String, BigDecimal> entry : lastPrices.entrySet()) {
-            String code = entry.getKey();
-            BigDecimal lastPrice = entry.getValue();
-
-            SyncStockInfo info = stockInfoMapper.selectById(code);
-            if (info == null) continue;
-
-            // changeRate = (lastPrice - yesterdayClose) / yesterdayClose * 100%
-            BigDecimal yClose = info.getYesterdayClose();
-            BigDecimal rate = lastPrice.subtract(yClose)
-                    .divide(yClose, 4, RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.valueOf(100))
-                    .setScale(2, RoundingMode.HALF_UP);
-            String changeRate = (rate.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
-                    + rate + "%";
-
-            // 组装 QuoteDTO 并写入 Redis（TTL 5 秒）
-            QuoteDTO quote = buildQuote(code);
-            quote.setLastPrice(lastPrice);
-            quote.setChangeRate(changeRate);
-            // Mock 盘口：买一 = lastPrice − 0.01，卖一 = lastPrice + 0.01
-            quote.setBidPrice(lastPrice.subtract(new BigDecimal("0.01")));
-            quote.setAskPrice(lastPrice.add(new BigDecimal("0.01")));
-            quote.setBidVolume(10000L + (long) (Math.random() * 50000));
-            quote.setAskVolume(8000L + (long) (Math.random() * 40000));
+        for (String code : MOCK_STOCKS) {
             try {
-                String json = objectMapper.writeValueAsString(quote);
-                redisTemplate.opsForValue().set("quote:" + code, json, 5, TimeUnit.SECONDS);
-            } catch (JsonProcessingException ignored) {}
-
-            // 主力累加 & 推 tick
-            for (TransactionRecord r : records) {
-                if (!code.equals(r.stockCode)) continue;
-
-                try {
-                    topTraderEngine.accumulate(code, r.buyerAccount(), r.sellerAccount(), r.quantity());
-                } catch (UnsupportedOperationException ignored) {}
-
-                try {
-                    String tickJson = objectMapper.writeValueAsString(r);
-                    redisTemplate.opsForList().rightPush("tick:" + code, tickJson);
-                } catch (JsonProcessingException ignored) {}
+                fetchAndCacheQuote(code);
+            } catch (Exception e) {
+                // 中央交易系统未就绪时静默跳过，保留 Redis 中上次数据
             }
         }
     }
 
-    private List<TransactionRecord> mockTransactions() {
-        List<TransactionRecord> list = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
-        for (String code : MOCK_STOCKS) {
-            SyncStockInfo info = stockInfoMapper.selectById(code);
-            if (info == null) continue;
-            BigDecimal base = info.getYesterdayClose();
-            // 每只股票生成 1~3 笔成交，价格在昨收 ±0.5% 内随机浮动
-            int count = 1 + (int) (Math.random() * 3);
-            for (int i = 0; i < count; i++) {
-                double pct = (Math.random() - 0.5) * 0.01; // -0.5% ~ +0.5%
-                BigDecimal price = base.multiply(BigDecimal.valueOf(1.0 + pct))
-                        .setScale(2, RoundingMode.HALF_UP);
-                long qty = 1000L + (long) (Math.random() * 50000);
-                // 固定账户名，确保 TopTraderEngine 能累积
-                String buyer = "B_" + code;
-                String seller = "S_" + code;
-                list.add(new TransactionRecord(code, now.minusSeconds(count - i),
-                        buyer, seller, price, qty));
+    private void fetchAndCacheQuote(String code) {
+        String url = centralTradeBaseUrl + snapshotPath + "/" + code;
+        ResponseEntity<Map> resp = restTemplate.getForEntity(url, Map.class);
+        if (resp.getStatusCode() != HttpStatus.OK || resp.getBody() == null) return;
+
+        Map<String, Object> body = resp.getBody();
+        SyncStockInfo info = stockInfoMapper.selectById(code);
+        if (info == null) return;
+
+        // 最新成交价：取 recentTrades 第一条
+        BigDecimal lastPrice = info.getYesterdayClose();
+        Object tradesObj = body.get("recentTrades");
+        if (tradesObj instanceof List && !((List<?>) tradesObj).isEmpty()) {
+            Map<String, Object> firstTrade = (Map<String, Object>) ((List<?>) tradesObj).get(0);
+            Object dealPrice = firstTrade.get("dealPrice");
+            if (dealPrice != null) {
+                lastPrice = new BigDecimal(dealPrice.toString());
+            }
+
+            // 主力累加 & 推 tick
+            LocalDateTime now = LocalDateTime.now();
+            for (Object t : (List<?>) tradesObj) {
+                Map<String, Object> trade = (Map<String, Object>) t;
+                String buyer = String.valueOf(trade.getOrDefault("buyerName", ""));
+                String seller = String.valueOf(trade.getOrDefault("sellerName", ""));
+                BigDecimal price = new BigDecimal(trade.getOrDefault("dealPrice", "0").toString());
+                long qty = Long.parseLong(trade.getOrDefault("dealQuantity", "0").toString());
+                try {
+                    topTraderEngine.accumulate(code, buyer, seller, qty);
+                } catch (UnsupportedOperationException ignored) {}
+                TransactionRecord tr = new TransactionRecord(code, now, buyer, seller, price, qty);
+                try {
+                    redisTemplate.opsForList().rightPush("tick:" + code,
+                            objectMapper.writeValueAsString(tr));
+                } catch (JsonProcessingException ignored) {}
             }
         }
-        return list;
+
+        // 涨跌幅
+        BigDecimal yClose = info.getYesterdayClose();
+        BigDecimal rate = lastPrice.subtract(yClose)
+                .divide(yClose, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
+        String changeRate = (rate.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + rate + "%";
+
+        // 盘口（中央交易系统真实数据）
+        Object bidP = body.get("bidPrice");
+        Object askP = body.get("askPrice");
+        Object bidV = body.get("bidVolume");
+        Object askV = body.get("askVolume");
+
+        QuoteDTO quote = buildQuote(code);
+        quote.setLastPrice(lastPrice);
+        quote.setChangeRate(changeRate);
+        quote.setBidPrice(bidP != null ? new BigDecimal(bidP.toString()) : null);
+        quote.setAskPrice(askP != null ? new BigDecimal(askP.toString()) : null);
+        quote.setBidVolume(bidV != null ? Long.parseLong(bidV.toString()) : null);
+        quote.setAskVolume(askV != null ? Long.parseLong(askV.toString()) : null);
+
+        try {
+            redisTemplate.opsForValue().set("quote:" + code,
+                    objectMapper.writeValueAsString(quote), 5, TimeUnit.SECONDS);
+        } catch (JsonProcessingException ignored) {}
     }
 
     @Scheduled(cron = "0 */5 * * * *")

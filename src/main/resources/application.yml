@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8083
   servlet:
     context-path: /api/publish
     encoding:
@@ -32,9 +32,13 @@ mybatis-plus:
     db-config:
       id-type: auto
 
-account-system:
-  auth-url: http://account-system/api/v1/auth/certificate-validate
-
-central-trade:
-  stock-list-url: http://central-trade/api/v1/stock/list
-  transaction-url: http://central-trade/api/v1/transaction/recent
+# 外部子系统地址
+subsystems:
+  account:
+    base-url: http://localhost:8080
+    login-path: /api/external/fund/login
+    snapshot-path: /api/external/fund/snapshot
+  central-trade:
+    base-url: http://localhost:8082
+    stocks-path: /api/central-trading/stocks
+    snapshot-path: /api/central-trading/market/snapshot

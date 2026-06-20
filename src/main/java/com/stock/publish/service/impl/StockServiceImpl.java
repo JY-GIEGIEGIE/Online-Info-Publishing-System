@@ -4,17 +4,32 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.stock.publish.entity.SyncStockInfo;
 import com.stock.publish.mapper.SyncStockInfoMapper;
 import com.stock.publish.service.StockService;
+import net.sourceforge.pinyin4j.PinyinHelper;
+import net.sourceforge.pinyin4j.format.HanyuPinyinCaseType;
+import net.sourceforge.pinyin4j.format.HanyuPinyinOutputFormat;
+import net.sourceforge.pinyin4j.format.HanyuPinyinToneType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class StockServiceImpl implements StockService {
 
     private final SyncStockInfoMapper stockInfoMapper;
+    private final RestTemplate restTemplate;
 
-    public StockServiceImpl(SyncStockInfoMapper stockInfoMapper) {
+    @Value("${subsystems.central-trade.base-url:http://localhost:8082}")
+    private String centralTradeBaseUrl;
+    @Value("${subsystems.central-trade.stocks-path:/api/central-trading/stocks}")
+    private String stocksPath;
+
+    public StockServiceImpl(SyncStockInfoMapper stockInfoMapper, RestTemplate restTemplate) {
         this.stockInfoMapper = stockInfoMapper;
+        this.restTemplate = restTemplate;
     }
 
     @Override
@@ -38,27 +53,47 @@ public class StockServiceImpl implements StockService {
 
     @Override
     public void syncFromCentralSystem() {
-        // DONE: 从中央交易系统全量同步股票基础信息，生成本地拼音缩写
-        // ★ 集成阶段需替换为真实 HTTP 调用：GET {central-trade}/api/v1/stock/list
-        // ★ 拼音缩写需引入 pinyin4j 或 TinyPinyin 生成
-        SyncStockInfo s1 = new SyncStockInfo();
-        s1.setStockCode("600519");
-        s1.setStockName("贵州茅台");
-        s1.setStockType(0);
-        s1.setYesterdayClose(new java.math.BigDecimal("1660.00"));
-        s1.setLimitRate(new java.math.BigDecimal("0.1000"));
-        s1.setStatus(0);
-        s1.setPinyinAbbr("GZMT");
-        stockInfoMapper.insert(s1);
+        try {
+            String url = centralTradeBaseUrl + stocksPath;
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> stocks = restTemplate.getForObject(url, List.class);
+            if (stocks == null || stocks.isEmpty()) return;
 
-        SyncStockInfo s2 = new SyncStockInfo();
-        s2.setStockCode("000001");
-        s2.setStockName("平安银行");
-        s2.setStockType(0);
-        s2.setYesterdayClose(new java.math.BigDecimal("12.30"));
-        s2.setLimitRate(new java.math.BigDecimal("0.1000"));
-        s2.setStatus(0);
-        s2.setPinyinAbbr("PAYH");
-        stockInfoMapper.insert(s2);
+            for (Map<String, Object> s : stocks) {
+                String code = String.valueOf(s.getOrDefault("stockCode", ""));
+                if (code.isEmpty()) continue;
+
+                SyncStockInfo info = new SyncStockInfo();
+                info.setStockCode(code);
+                info.setStockName(String.valueOf(s.getOrDefault("stockName", "")));
+                info.setStockType(0);
+                Object yc = s.get("yesterdayClose");
+                info.setYesterdayClose(yc != null ? new BigDecimal(yc.toString()) : BigDecimal.ZERO);
+                info.setLimitRate(new BigDecimal("0.1000"));
+                info.setStatus(0);
+                info.setPinyinAbbr(toPinyinAbbr(info.getStockName()));
+                stockInfoMapper.insert(info);
+            }
+        } catch (Exception e) {
+            // 中央交易系统未就绪时保留 DB 已有数据
+        }
+    }
+
+    /** 生成拼音首字母缩写，如 "贵州茅台" → "GZMT" */
+    private String toPinyinAbbr(String chinese) {
+        HanyuPinyinOutputFormat format = new HanyuPinyinOutputFormat();
+        format.setCaseType(HanyuPinyinCaseType.UPPERCASE);
+        format.setToneType(HanyuPinyinToneType.WITHOUT_TONE);
+
+        StringBuilder sb = new StringBuilder();
+        for (char c : chinese.toCharArray()) {
+            try {
+                String[] pinyin = PinyinHelper.toHanyuPinyinStringArray(c, format);
+                if (pinyin != null && pinyin.length > 0 && !pinyin[0].isEmpty()) {
+                    sb.append(pinyin[0].charAt(0));
+                }
+            } catch (Exception ignored) {}
+        }
+        return sb.toString();
     }
 }
